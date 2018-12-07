@@ -1,0 +1,94 @@
+version: "3"
+services:
+  # 基础服务之一，不需要任何修改
+  mysql: 
+    restart: true
+    image: mysql:5.6
+    container_name: mysql
+    privileged: true
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    # mysql服务的卷引用，将容器中的主要目录映射到宿主机中，保证数据的持久化
+    volumes:
+      - /data/mysql/data:/var/lib/mysql
+      - /data/mysql/conf:/etc/mysql/conf.d
+      - /data/mysql/logs:/logs
+    ports:
+      - 3306:3306
+  # 基础服务之一，不需要任何修改
+  activemq:
+    restart: true
+    image: webcenter/activemq:latest
+    container_name: activemq
+    ports:
+      - 8161:8161
+      - 61616:61616
+  # 当宿主机为中心时启用flume
+  # flume:
+  #   build: ./flume
+  #   image: cdjs:flume
+  #   container_name: flume
+  #   ports:
+  #     - 20001:20001
+  #   privileged: true
+  # 当宿主机为非中心时启用canal_example
+  canal_example:
+    build: ./canal_example
+    image: cdjs:canal_example
+    container_name: canal_example
+    privileged: true
+    #使用脚本等待canal服务启动后再启动canal_example
+    entrypoint: "sh /wait_for.sh -d canal:11111,canal:11112 -c "java -jar /root/db/app.jar"
+  # 服务打包时需将mysql地址改为"jdbc:mysql://mysql:3306/yanshi?characterEncoding=utf8&useSSL=true"
+  # activemq地址改为 activemq
+  db:
+    restart: true
+    build: ./db
+    image: cdjs:db
+    ports:
+      - 8081:8081
+    container_name: db
+    depends_on:
+      - mysql
+      - activemq
+  # 服务打包时需将mysql地址改为"jdbc:mysql://mysql:3306/yanshi?characterEncoding=utf8&useSSL=true"
+  control:
+    restart: true
+    build: ./control
+    image: cdjs:control
+    ports: 
+      - 8082:8082
+    container_name: control
+    depends_on:
+      - db
+    #使用脚本等待db服务启动后再启动control
+    entrypoint: sh /wait_for.sh -d db:8081 -c "java -jar /root/db/app.jar"
+  # 基础服务 需要把war包换成现在项目的地图
+  map:
+    restart: true
+    image: tomcat:8.5.15
+    container_name: map
+    privileged: true
+    volumes:
+      - /data/map/map:/usr/local/tomcat/webapps/map
+    ports:
+      - 21001:8080
+  # 注意更改monitor-webAPP中的相应地址为服务地址
+  webapp:
+    restart: true
+    image: tomcat:8.5.15
+    container_name: webapp
+    privileged: true
+    volumes:
+      - /data/webapp/monitor-webAPP.war:/usr/local/tomcat/webapps/monitor-webAPP.war
+    ports:
+      - 80:8080
+    depends_on:
+      - db
+      - map
+      - control
+      # 需要使用shell脚本启动的png容器
+    external_links:
+      - png
+# networks: 
+#   cdjs:

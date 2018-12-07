@@ -1,0 +1,70 @@
+version: "3"
+services:
+  # 基础服务之一，不需要任何修改
+  mysql: 
+    image: mysql:5.6
+    container_name: mysql
+    privileged: true
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    # mysql服务的卷引用，将容器中的主要目录映射到宿主机中，保证数据的持久化
+    volumes:
+      - /data/mysql/data:/var/lib/mysql
+      - /data/mysql/conf:/etc/mysql/conf.d
+      - /data/mysql/logs:/logs
+    ports:
+      - 3306:3306
+  # 基础服务之一，不需要任何修改
+  activemq:
+    image: webcenter/activemq:latest
+    container_name: activemq
+    ports:
+      - 8161:8161
+      - 61616:61616
+  # 服务打包时需将mysql地址改为"jdbc:mysql://mysql:3306/yanshi?characterEncoding=utf8&useSSL=true"
+  # activemq地址改为 activemq
+  db:
+    build: ./db
+    image: cdjs:db
+    ports:
+      - 8081:8081
+    container_name: db
+    depends_on:
+      - mysql
+      - activemq
+  # 服务打包时需将mysql地址改为"jdbc:mysql://mysql:3306/yanshi?characterEncoding=utf8&useSSL=true"
+  control:
+    build: ./control
+    image: cdjs:control
+    ports: 
+      - 8082:8082
+    container_name: control
+    depends_on:
+      - db
+  # 基础服务 需要把war包换成现在项目的地图
+  map:
+    image: tomcat:8.5.15
+    container_name: map
+    privileged: true
+    volumes:
+      - /data/map/map:/usr/local/tomcat/webapps/map
+    ports:
+      - 21001:8080
+  # 注意更改monitor-webAPP中的相应地址为服务地址
+  webapp:
+    image: tomcat:8.5.15
+    container_name: webapp
+    privileged: true
+    volumes:
+      - /data/webapp/monitor-webAPP.war:/usr/local/tomcat/webapps/monitor-webAPP.war
+    ports:
+      - 80:8080
+    depends_on:
+      - db
+      - map
+      - control
+      # 需要使用shell脚本启动的png容器
+    external_links:
+      - png
+# networks: 
+#   cdjs:
